@@ -10,8 +10,12 @@ def create_warehouse():
 
     data = request.json
 
+    if not data or not data.get("name"):
+        return jsonify({"error": "Warehouse name is required"}), 400
+
     warehouse = Warehouse(
-        name=data["location_name"]
+        name=data["name"],
+        location=data.get("location")
     )
 
     db.session.add(warehouse)

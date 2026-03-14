@@ -19,8 +19,10 @@ def create_product():
     product = Product(
         name=data["name"],
         sku=data["sku"],
-        category=data.get("category"),
-        unit=data.get("unit"),
+        category_id=data.get("category_id"),
+        unit_id=data.get("unit_id"),
+        cost_price=data.get("cost_price"),
+        selling_price=data.get("selling_price"),
         reorder_level=data.get("reorder_level", 10)
     )
 
@@ -47,8 +49,10 @@ def update_product(product_id):
     data = request.json
 
     product.name = data.get("name", product.name)
-    product.category = data.get("category", product.category)
-    product.unit = data.get("unit", product.unit)
+    product.category_id = data.get("category_id", product.category_id)
+    product.unit_id = data.get("unit_id", product.unit_id)
+    product.cost_price = data.get("cost_price", product.cost_price)
+    product.selling_price = data.get("selling_price", product.selling_price)
     product.reorder_level = data.get("reorder_level", product.reorder_level)
 
     db.session.commit()
@@ -82,8 +86,12 @@ def get_products():
             "product_id": p.product_id,
             "name": p.name,
             "sku": p.sku,
-            "category": p.category,
-            "unit": p.unit,
+            "category_id": p.category_id,
+            "category_name": p.category.name if p.category else None,
+            "unit_id": p.unit_id,
+            "unit_name": p.unit.name if p.unit else None,
+            "cost_price": p.cost_price,
+            "selling_price": p.selling_price,
             "reorder_level": p.reorder_level
         })
 
@@ -107,7 +115,9 @@ def search_product():
         result.append({
             "product_id": p.product_id,
             "name": p.name,
-            "sku": p.sku
+            "sku": p.sku,
+            "category_name": p.category.name if p.category else None,
+            "unit_name": p.unit.name if p.unit else None
         })
 
     return jsonify(result)
