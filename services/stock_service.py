@@ -7,7 +7,7 @@ def add_stock(product_id, warehouse_id, qty, reference):
     entry = StockLedger(
         product_id=product_id,
         warehouse_id=warehouse_id,
-        change_amount=qty,
+        quantity=qty,
         movement_type="IN",
         reference=reference
     )
@@ -21,7 +21,7 @@ def remove_stock(product_id, warehouse_id, qty, reference):
     entry = StockLedger(
         product_id=product_id,
         warehouse_id=warehouse_id,
-        change_amount=-qty,
+        quantity=-qty,
         movement_type="OUT",
         reference=reference
     )

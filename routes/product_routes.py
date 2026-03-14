@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models.product import Product
+from sqlalchemy import func
+from models.ledger import StockLedger
 
 product_bp = Blueprint("products", __name__)
 
@@ -22,8 +24,14 @@ def create_product():
         reorder_level=data.get("reorder_level", 10)
     )
 
-    db.session.add(product)
-    db.session.commit()
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        db.session.add(product)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "SKU already exists"}), 400
 
     return jsonify({
         "message": "Product created",
