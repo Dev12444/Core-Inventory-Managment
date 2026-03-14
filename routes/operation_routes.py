@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models.ledger import StockLedger
+from models.product import Product
 from services.stock_service import add_stock, remove_stock
 from sqlalchemy import func
 from extensions import db
@@ -91,11 +92,21 @@ def movement_history():
 @operation_bp.route("/inventory/stock", methods=["GET"])
 def current_stock():
 
-    stock_data = db.session.query(
+    product_id = request.args.get("product_id", type=int)
+    warehouse_id = request.args.get("warehouse_id", type=int)
+
+    query = db.session.query(
         StockLedger.product_id,
         StockLedger.warehouse_id,
         func.sum(StockLedger.quantity).label("stock")
-    ).group_by(
+    )
+
+    if product_id:
+        query = query.filter(StockLedger.product_id == product_id)
+    if warehouse_id:
+        query = query.filter(StockLedger.warehouse_id == warehouse_id)
+
+    stock_data = query.group_by(
         StockLedger.product_id,
         StockLedger.warehouse_id
     ).all()
@@ -107,6 +118,50 @@ def current_stock():
             "product_id": row.product_id,
             "warehouse_id": row.warehouse_id,
             "stock": row.stock
+        })
+
+    return jsonify(result)
+@operation_bp.route("/inventory/low-stock", methods=["GET"])
+def low_stock_alerts():
+
+    warehouse_id = request.args.get("warehouse_id", type=int)
+    product_id = request.args.get("product_id", type=int)
+    sku = request.args.get("sku")
+
+    query = db.session.query(
+        StockLedger.product_id,
+        StockLedger.warehouse_id,
+        func.sum(StockLedger.quantity).label("stock"),
+        Product.reorder_level,
+        Product.sku,
+        Product.name
+    ).join(Product, Product.product_id == StockLedger.product_id)
+
+    if warehouse_id:
+        query = query.filter(StockLedger.warehouse_id == warehouse_id)
+    if product_id:
+        query = query.filter(StockLedger.product_id == product_id)
+    if sku:
+        query = query.filter(Product.sku.ilike(f"%{sku}%"))
+
+    stock_data = query.group_by(
+        StockLedger.product_id,
+        StockLedger.warehouse_id,
+        Product.reorder_level,
+        Product.sku,
+        Product.name
+    ).having(func.sum(StockLedger.quantity) <= Product.reorder_level).all()
+
+    result = []
+
+    for row in stock_data:
+        result.append({
+            "product_id": row.product_id,
+            "sku": row.sku,
+            "name": row.name,
+            "warehouse_id": row.warehouse_id,
+            "stock": row.stock,
+            "reorder_level": row.reorder_level
         })
 
     return jsonify(result)

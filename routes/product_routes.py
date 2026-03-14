@@ -60,7 +60,20 @@ def update_product(product_id):
 @product_bp.route("/products", methods=["GET"])
 def get_products():
 
-    products = Product.query.all()
+    sku = request.args.get("sku")
+    name = request.args.get("name")
+    category = request.args.get("category")
+
+    query = Product.query
+
+    if sku:
+        query = query.filter(Product.sku.ilike(f"%{sku}%"))
+    if name:
+        query = query.filter(Product.name.ilike(f"%{name}%"))
+    if category:
+        query = query.filter(Product.category.ilike(f"%{category}%"))
+
+    products = query.all()
 
     result = []
 

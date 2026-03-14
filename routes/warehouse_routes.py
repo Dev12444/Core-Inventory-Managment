@@ -29,8 +29,9 @@ def get_warehouses():
 
     for w in warehouses:
         result.append({
-            "id": w.warehouse_id,
-            "name": w.location_name
+            "id": w.id,
+            "name": w.name,
+            "location": w.location
         })
 
     return jsonify(result)
