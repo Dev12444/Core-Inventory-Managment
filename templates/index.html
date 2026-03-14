@@ -602,6 +602,7 @@ body.light-theme .stat:hover{box-shadow:0 4px 20px rgba(79,126,248,.10)}
 <body>
 <div id="root"></div>
 <script type="text/babel">
+{% raw %}
 const {useState,useEffect,useRef,useCallback,createContext,useContext,useMemo}=React;
 
 /* ═══════════════════════════════════════════════════
@@ -710,11 +711,132 @@ function AppProvider({children}){
   const [authed,setAuthed]=useState(false);
   const [authUser,setAuthUser]=useState(null);
   const [lightTheme,setLightTheme]=useState(false);
-  const [products,setProducts]=useState(seedProducts);
-  const [moves,setMoves]=useState(()=>seedMoves(seedProducts()));
-  const [receipts,setReceipts]=useState(seedReceipts);
-  const [deliveries,setDeliveries]=useState(seedDeliveries);
+  
+  const [products,setProducts]=useState([]);
+  const [moves,setMoves]=useState([]);
+  const [receipts,setReceipts]=useState([]);
+  const [deliveries,setDeliveries]=useState([]);
+  
+  const [warehouses, setWarehouses] = useState(WAREHOUSES);
+  const [categories, setCategories] = useState(CATEGORIES);
+  const [units, setUnits] = useState(UNITS);
+  const [vendors, setVendors] = useState(VENDORS);
+  const [customers, setCustomers] = useState(CUSTOMERS);
+  
   const [toasts,setToasts]=useState([]);
+
+  useEffect(() => {
+    async function initData() {
+      try {
+        const fetchJson = async (url) => {
+          try {
+            const r = await fetch(url);
+            if (!r.ok) return [];
+            return await r.json();
+          } catch(e) { return []; }
+        };
+
+        const [wRes, cRes, uRes, vRes, cuRes, pRes, sRes, rhRes, rcRes] = await Promise.all([
+          fetchJson('/warehouses'),
+          fetchJson('/categories'),
+          fetchJson('/units'),
+          fetchJson('/vendors'),
+          fetchJson('/customers'),
+          fetchJson('/products'),
+          fetchJson('/inventory/stock'),
+          fetchJson('/operations/history'),
+          fetchJson('/operations/receipts'),
+        ]);
+
+        const wList = wRes.map(w => ({...w, id: w.id.toString(), code: w.name.substring(0,4).toUpperCase(), value: 0, skus: 0}));
+        const cList = cRes.map(c => ({...c, id: c.category_id.toString()}));
+        const uList = uRes.map(u => ({...u, id: u.unit_id.toString()}));
+        const vList = vRes.map(v => ({...v, id: v.vendor_id.toString()}));
+        const cuList = cuRes.map(cu => ({...cu, id: cu.customer_id.toString()}));
+
+        if(wList.length > 0) setWarehouses(wList);
+        if(cList.length > 0) setCategories(cList);
+        if(uList.length > 0) setUnits(uList);
+        if(vList.length > 0) setVendors(vList);
+        if(cuList.length > 0) setCustomers(cuList);
+
+        if (pRes.length > 0) {
+           const processedProducts = [];
+           pRes.forEach(p => {
+               const pStocks = sRes.filter(s => s.product_id === p.product_id);
+               if (pStocks.length === 0) {
+                 processedProducts.push({
+                   id: p.product_id.toString(),
+                   sku: p.sku,
+                   name: p.name,
+                   category: p.category_id ? p.category_id.toString() : 'cat1',
+                   unit: p.unit_id ? p.unit_id.toString() : 'u1',
+                   warehouse: wList.length > 0 ? wList[0].id : 'WH01',
+                   qty: 0,
+                   minQty: p.reorder_level || 10,
+                   reorderQty: 100,
+                   cost: p.cost_price || 0,
+                   price: p.selling_price || 0,
+                   status: 'active'
+                 });
+               } else {
+                 pStocks.forEach(st => {
+                   processedProducts.push({
+                     id: p.product_id.toString() + '_' + st.warehouse_id,
+                     real_id: p.product_id.toString(),
+                     sku: p.sku,
+                     name: p.name,
+                     category: p.category_id ? p.category_id.toString() : 'cat1',
+                     unit: p.unit_id ? p.unit_id.toString() : 'u1',
+                     warehouse: st.warehouse_id.toString(),
+                     qty: st.stock || 0,
+                     minQty: p.reorder_level || 10,
+                     cost: p.cost_price || 0,
+                     price: p.selling_price || 0,
+                     status: 'active'
+                   });
+                 });
+               }
+           });
+           setProducts(processedProducts);
+        } else {
+           setProducts(seedProducts());
+        }
+
+        if (rhRes.length > 0) {
+           setMoves(rhRes.map((m, i) => ({
+             id: 'm'+i,
+             ref: m.reference,
+             productId: m.product_id.toString(),
+             qty: m.change,
+             type: m.type === 'IN' ? 'receipt' : m.type === 'OUT' ? 'delivery' : 'transfer',
+             warehouseId: m.warehouse_id.toString(),
+             date: m.created_at,
+             status: 'done'
+           })));
+        } else {
+           setMoves(seedMoves(seedProducts()));
+        }
+
+        if (rcRes.length > 0) {
+           setReceipts(rcRes.map(r => ({
+              id: r.receipt_id.toString(),
+              ref: r.reference,
+              warehouse: r.warehouse_id.toString(),
+              status: r.status,
+              date: new Date().toISOString(),
+              items: [],
+              total: 0
+           })));
+        } else {
+           setReceipts(seedReceipts());
+        }
+        
+        setDeliveries(seedDeliveries());
+      } catch(e) { console.error("Data load error", e); }
+    }
+    initData();
+  }, []);
 
   /* Apply theme class to body */
   useEffect(()=>{
@@ -727,18 +849,16 @@ function AppProvider({children}){
     setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),3400);
   };
 
-  /* Add a stock movement and update product quantities */
   const addMove=(move)=>{
     const m={...move,id:genId(),date:now(),user:authUser?.name||'System'};
     setMoves(prev=>[m,...prev]);
     setProducts(prev=>prev.map(p=>p.id===move.productId?{...p,qty:Math.max(0,p.qty+move.qty)}:p));
   };
 
-  /* RBAC: filter data by warehouse if role is Warehouse Staff */
   const visibleWarehouses=useMemo(()=>{
-    if(!authUser||authUser.role==='Admin')return WAREHOUSES;
-    return WAREHOUSES.filter(w=>w.id===authUser.warehouse);
-  },[authUser]);
+    if(!authUser||authUser.role==='Admin')return warehouses;
+    return warehouses.filter(w=>w.id===authUser.warehouse);
+  },[authUser, warehouses]);
 
   const visibleProducts=useMemo(()=>{
     if(!authUser||authUser.role==='Admin')return products;
@@ -766,17 +886,14 @@ function AppProvider({children}){
   const ctx={
     authed,setAuthed,authUser,setAuthUser,
     lightTheme,setLightTheme,
-    /* raw setters */
     products,setProducts,
     moves,setMoves,
     receipts,setReceipts,
     deliveries,setDeliveries,
-    /* RBAC-filtered getters */
     visibleWarehouses,visibleProducts,visibleMoves,visibleReceipts,visibleDeliveries,
     addMove,toast,lowStock,outOfStock,
-    categories:CATEGORIES,units:UNITS,
-    warehouses:WAREHOUSES,/* full list for selects */
-    vendors:VENDORS,customers:CUSTOMERS,
+    categories,units,
+    warehouses, vendors,customers,
     genReceiptRef,
   };
 
@@ -1177,10 +1294,19 @@ function Dashboard(){
     return e;
   };
 
-  const addWarehouse=()=>{
+  const addWarehouse=async ()=>{
     const e=validateWH();
     if(Object.keys(e).length){setWhErrors(e);return;}
-    toast(`Warehouse ${whForm.name} added!`);
+    try {
+      const res = await fetch('/warehouses', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: whForm.name, location: whForm.location })
+      });
+      if(res.ok) {
+        toast(`Warehouse ${whForm.name} added!`);
+        setTimeout(() => window.location.reload(), 800);
+      }
+    } catch(err) { toast('Error adding warehouse', 'error') }
     setShowAddWH(false);setWhForm({code:'',name:'',address:'',location:''});setWhErrors({});
   };
 
@@ -1335,28 +1461,29 @@ function Operation(){
     return e;
   };
 
-  const saveReceipt=()=>{
+  const saveReceipt=async ()=>{
     const e=validateR();
     if(Object.keys(e).length){setRErrors(e);return;}
-    const wh=warehouses.find(w=>w.id===rForm.warehouse);
-    const ref=genReceiptRef(wh.code,warehouses);
-    const newR={
-      id:genId(),ref,
-      vendor:rForm.vendor,warehouse:rForm.warehouse,
-      scheduleDate:new Date(rForm.scheduleDate).toISOString(),
-      date:now(),status:rForm.status,
-      items:rForm.items.map(i=>({productId:i.productId,qty:Number(i.qty)})),
-      total:rForm.items.reduce((s,i)=>{const p=products.find(x=>x.id===i.productId);return s+(p?.cost||0)*Number(i.qty);},0),
-      createdBy:authUser?.name||'System',
-    };
-    setReceipts(prev=>[newR,...prev]);
-    if(rForm.status==='done'){
-      rForm.items.forEach(item=>{
-        const p=products.find(x=>x.id===item.productId);
-        addMove({ref,productId:item.productId,productName:p?.name||'—',sku:p?.sku||'—',type:'receipt',qty:Number(item.qty),warehouseId:rForm.warehouse,fromWh:rForm.warehouse,toWh:null,contact:vendors.find(v=>v.id===rForm.vendor)?.name});
+    try {
+      const res = await fetch('/operations/receipt/create', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+           vendor_id: parseInt(rForm.vendor),
+           warehouse_id: parseInt(rForm.warehouse),
+           items: rForm.items.map(i => ({ product_id: parseInt(i.productId.split('_')[0]), qty: Number(i.qty) }))
+        })
       });
-    }
-    toast(`Receipt ${ref} created!`);
+      if(res.ok) {
+         const d = await res.json();
+         if(rForm.status === 'done') {
+            await fetch(`/operations/receipt/validate/${d.receipt_id}`, { method: 'POST' });
+         }
+         toast(`Receipt created!`);
+         setTimeout(() => window.location.reload(), 800);
+      } else {
+         toast('Failed to save receipt', 'error');
+      }
+    } catch(err) { toast('Failed to save receipt', 'error'); }
     setShowAddR(false);setRForm(initForm);setRErrors({});
   };
 
@@ -1537,20 +1664,50 @@ function Stock(){
     return e;
   };
 
-  const saveProduct=()=>{
+  const saveProduct=async ()=>{
     const e=validateP();
     if(Object.keys(e).length){setPErrors(e);return;}
-    setProducts(prev=>[...prev,{id:genId(),...pForm,qty:0,cost:Number(pForm.cost),price:Number(pForm.price),minQty:Number(pForm.minQty),reorderQty:Number(pForm.reorderQty)}]);
-    toast(`Product ${pForm.name} added!`);
+    try {
+      const res = await fetch('/products', {
+         method: 'POST', headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+            name: pForm.name,
+            sku: pForm.sku,
+            category_id: parseInt(pForm.category) || 1,
+            unit_id: parseInt(pForm.unit) || 1,
+            cost_price: Number(pForm.cost),
+            selling_price: Number(pForm.price),
+            reorder_level: Number(pForm.minQty)
+         })
+      });
+      if(res.ok) {
+         toast(`Product ${pForm.name} added!`);
+         setTimeout(() => window.location.reload(), 800);
+      } else {
+         toast('Failed to add product (duplicate SKU?)', 'error');
+      }
+    } catch(err) { toast('Error saving product', 'error'); }
     setShowAdd(false);setPForm(initProd);setPErrors({});
   };
 
-  const doAdj=()=>{
+  const doAdj=async ()=>{
     if(!adjQty||Number(adjQty)<1)return;
     const delta=adjType==='in'?Number(adjQty):-Number(adjQty);
-    const wh=warehouses.find(w=>w.id===adjModal.warehouse);
-    addMove({ref:`ADJ-${genId()}`,productId:adjModal.id,productName:adjModal.name,sku:adjModal.sku,type:'adjustment',qty:delta,warehouseId:adjModal.warehouse,fromWh:adjModal.warehouse,toWh:null,contact:null});
-    toast(`${adjType==='in'?'Stocked in':'Removed'} ${adjQty} units of ${adjModal.name}`);
+    try {
+      const res = await fetch('/inventory/adjust', {
+         method: 'POST', headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+            product_id: parseInt(adjModal.id),
+            warehouse_id: parseInt(adjModal.warehouse) || 1,
+            qty: delta,
+            reference: `ADJ-${genId()}`
+         })
+      });
+      if(res.ok) {
+         toast(`${adjType==='in'?'Stocked in':'Removed'} ${adjQty} units of ${adjModal.name}`);
+         setTimeout(() => window.location.reload(), 800);
+      }
+    } catch(err) {}
     setAdjModal(null);setAdjQty('');
   };
 
@@ -1618,8 +1775,8 @@ function Stock(){
               </td>
               <td>
                 <div style={{display:'flex',gap:4}}>
-                  <button className="btn btn-success btn-xs" onClick={()=>{setAdjModal(p);setAdjType('in');setAdjQty('');}}>↑ In</button>
-                  <button className="btn btn-danger btn-xs" onClick={()=>{setAdjModal(p);setAdjType('out');setAdjQty('');}}>↓ Out</button>
+                  <button className="btn btn-success btn-xs" onClick={()=>{setAdjModal({...p, id: p.real_id || p.id});setAdjType('in');setAdjQty('');}}>↑ In</button>
+                  <button className="btn btn-danger btn-xs" onClick={()=>{setAdjModal({...p, id: p.real_id || p.id});setAdjType('out');setAdjQty('');}}>↓ Out</button>
                 </div>
               </td>
             </tr>;
@@ -1877,6 +2034,7 @@ function App(){
 ReactDOM.createRoot(document.getElementById('root')).render(
   <AppProvider><App/></AppProvider>
 );
+{% endraw %}
 </script>
 </body>
 </html>

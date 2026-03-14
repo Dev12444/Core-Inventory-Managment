@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, render_template
 from config import Config
 from extensions import db
 from routes.warehouse_routes import warehouse_bp
@@ -41,6 +41,18 @@ app.register_blueprint(dashboard_bp)
 app.register_blueprint(warehouse_bp)
 app.register_blueprint(receipt_bp)
 app.register_blueprint(delivery_bp)
+
+@app.route("/")
+def home():
+    return render_template("index.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    from flask import request, redirect, url_for
+    if request.method == "POST":
+        # Accept the login and redirect to the dashboard frontend
+        return redirect(url_for("home"))
+    return render_template("login.html")
 
 with app.app_context():
     db.create_all()
