@@ -19,7 +19,7 @@ def create_product():
         sku=data["sku"],
         category=data.get("category"),
         unit=data.get("unit"),
-        reorder_level=data.get("reorder_level", 0)
+        reorder_level=data.get("reorder_level", 10)
     )
 
     db.session.add(product)
@@ -27,7 +27,7 @@ def create_product():
 
     return jsonify({
         "message": "Product created",
-        "product_id": product.id
+        "product_id": product.product_id
     }), 201
 
 
@@ -58,7 +58,7 @@ def get_products():
 
     for p in products:
         result.append({
-            "id": p.id,
+            "product_id": p.product_id,
             "name": p.name,
             "sku": p.sku,
             "category": p.category,
@@ -84,7 +84,7 @@ def search_product():
 
     for p in products:
         result.append({
-            "id": p.id,
+            "product_id": p.product_id,
             "name": p.name,
             "sku": p.sku
         })
